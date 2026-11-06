@@ -1,0 +1,17 @@
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# Variables de entorno y credenciales sensibles (NUNCA SUBIR A GITHUB)
+.env
+*.env
+
+# Cache de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos de pruebas locales
+test_docx_builder.py
+test_supabase.py
