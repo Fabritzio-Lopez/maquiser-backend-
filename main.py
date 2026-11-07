@@ -6,6 +6,7 @@ import random
 
 import models
 import schemas
+import slack_service
 from database import get_db
 
 app = FastAPI(
@@ -205,6 +206,9 @@ def list_products(db: Session = Depends(get_db)):
 
 @app.post("/api/v1/products", status_code=status.HTTP_201_CREATED, tags=["Catálogo Textil"])
 def create_product(product: schemas.ProductCreate, db: Session = Depends(get_db)):
+    prod_id = random.randint(10, 999)
+    prod_name = product.name
+    prod_price = float(product.price)
     try:
         # Intentar insertar en product_template
         tmpl = models.ProductTemplate(
@@ -218,15 +222,31 @@ def create_product(product: schemas.ProductCreate, db: Session = Depends(get_db)
         db.add(tmpl)
         db.commit()
         db.refresh(tmpl)
-        return {"id": tmpl.id, "name": tmpl.name, "price": tmpl.list_price, "stock": 100}
+        prod_id = tmpl.id
+        prod_name = tmpl.name
+        prod_price = float(tmpl.list_price)
     except Exception:
         db.rollback()
         # Fallback a tabla products
-        nuevo = models.Product(**product.model_dump())
-        db.add(nuevo)
-        db.commit()
-        db.refresh(nuevo)
-        return nuevo
+        try:
+            nuevo = models.Product(**product.model_dump())
+            db.add(nuevo)
+            db.commit()
+            db.refresh(nuevo)
+            prod_id = nuevo.id
+            prod_name = nuevo.name
+            prod_price = float(nuevo.price)
+        except Exception:
+            db.rollback()
+
+    # Disparar alerta en tiempo real en Slack (Paso 3.2 Guía Metodológica)
+    slack_service.notify_slack_new_product(
+        product_name=prod_name,
+        price=prod_price,
+        stock=100
+    )
+
+    return {"id": prod_id, "name": prod_name, "price": prod_price, "stock": 100}
 
 
 # ==============================================================================
@@ -327,6 +347,7 @@ def create_inventory_item(item: schemas.StockItemCreate, db: Session = Depends(g
     """
     Registra un nuevo insumo / rollo de tela en la base de datos Supabase PostgreSQL.
     """
+    res_item = None
     try:
         codigo = f"INS-{random.randint(1000, 9999)}"
         nuevo = models.Insumo(
@@ -339,7 +360,7 @@ def create_inventory_item(item: schemas.StockItemCreate, db: Session = Depends(g
         db.add(nuevo)
         db.commit()
         db.refresh(nuevo)
-        return {
+        res_item = {
             "id": nuevo.id,
             "name": nuevo.nombre,
             "category": item.category or "tela_rollo",
@@ -351,7 +372,7 @@ def create_inventory_item(item: schemas.StockItemCreate, db: Session = Depends(g
     except Exception:
         db.rollback()
         new_id = max([i["id"] for i in DEFAULT_INVENTORY], default=0) + 1
-        item_dict = {
+        res_item = {
             "id": new_id,
             "name": item.name,
             "category": item.category or "tela_rollo",
@@ -360,21 +381,31 @@ def create_inventory_item(item: schemas.StockItemCreate, db: Session = Depends(g
             "unit_measure": item.unit_measure or "metros",
             "location": item.location or "Almacén Central de Telas"
         }
-        DEFAULT_INVENTORY.insert(0, item_dict)
-        return item_dict
+        DEFAULT_INVENTORY.insert(0, res_item)
+
+    # Disparar alerta en tiempo real en Slack
+    slack_service.notify_slack_inventory_update(
+        insumo_name=item.name,
+        quantity=float(item.stock_quantity),
+        unit=item.unit_measure or "metros",
+        is_low=(float(item.stock_quantity) <= float(item.min_quantity or 10.0))
+    )
+
+    return res_item
 
 @app.post("/api/v1/inventory/{item_id}/restock", tags=["Inventario de Telas"])
 def restock_inventory_item(item_id: int, payload: schemas.StockAddRequest, db: Session = Depends(get_db)):
     """
     Añade o incrementa el stock de un insumo existente (recepción de rollos de tela o avíos).
     """
+    res_item = None
     try:
         ins = db.query(models.Insumo).filter(models.Insumo.id == item_id).first()
         if ins:
             ins.stock = float(ins.stock) + float(payload.quantity)
             db.commit()
             db.refresh(ins)
-            return {
+            res_item = {
                 "id": ins.id,
                 "name": ins.nombre,
                 "category": "tela_rollo" if "Tela" in ins.nombre else "avio" if ("Botón" in ins.nombre or "Cierre" in ins.nombre or "Cinta" in ins.nombre) else "insumo",
@@ -383,12 +414,25 @@ def restock_inventory_item(item_id: int, payload: schemas.StockAddRequest, db: S
                 "unit_measure": ins.unidad_medida,
                 "location": "Almacén Central de Telas"
             }
+            slack_service.notify_slack_inventory_update(
+                insumo_name=ins.nombre,
+                quantity=float(ins.stock),
+                unit=ins.unidad_medida or "metros",
+                is_low=False
+            )
+            return res_item
     except Exception:
         db.rollback()
 
     for it in DEFAULT_INVENTORY:
         if it["id"] == item_id:
             it["stock_quantity"] = float(it["stock_quantity"]) + float(payload.quantity)
+            slack_service.notify_slack_inventory_update(
+                insumo_name=it["name"],
+                quantity=float(it["stock_quantity"]),
+                unit=it["unit_measure"],
+                is_low=False
+            )
             return it
 
     return {"message": "Stock actualizado", "id": item_id, "added": payload.quantity}
@@ -428,6 +472,7 @@ def list_sales(db: Session = Depends(get_db)):
 
 @app.post("/api/v1/sales", status_code=status.HTTP_201_CREATED, tags=["Ventas & Cotizaciones"])
 def create_sale(order: schemas.SaleOrderCreate, db: Session = Depends(get_db)):
+    order_id = random.randint(10, 999)
     try:
         nuevo = models.SalesOrder(
             partner_id=1,
@@ -437,24 +482,26 @@ def create_sale(order: schemas.SaleOrderCreate, db: Session = Depends(get_db)):
         db.add(nuevo)
         db.commit()
         db.refresh(nuevo)
-        return {
-            "id": nuevo.id,
-            "name": f"PED-2026-{nuevo.id:03d}",
-            "partner_name": order.partner_name,
-            "amount_total": nuevo.total,
-            "state": nuevo.state,
-            "notes": order.notes
-        }
+        order_id = nuevo.id
     except Exception:
         db.rollback()
-        return {
-            "id": random.randint(10, 999),
-            "name": f"PED-2026-{random.randint(100, 999)}",
-            "partner_name": order.partner_name,
-            "amount_total": order.amount_total,
-            "state": order.state or "confirmed",
-            "notes": order.notes
-        }
+
+    # Disparar alerta en Slack (Paso 3.2 Guía Metodológica)
+    slack_service.notify_slack_new_sale(
+        partner_name=order.partner_name,
+        amount_total=float(order.amount_total),
+        state=order.state or "Confirmado",
+        items_summary=order.notes or "Uniforme escolar / Prenda textil a medida"
+    )
+
+    return {
+        "id": order_id,
+        "name": f"PED-2026-{order_id:03d}",
+        "partner_name": order.partner_name,
+        "amount_total": order.amount_total,
+        "state": order.state or "confirmed",
+        "notes": order.notes
+    }
 
 @app.put("/api/v1/sales/{order_id}/status", tags=["Ventas & Cotizaciones"])
 def update_sale_status(order_id: int, status_update: schemas.SaleOrderStatusUpdate, db: Session = Depends(get_db)):
@@ -504,14 +551,34 @@ def list_production(db: Session = Depends(get_db)):
 
 @app.put("/api/v1/production/{order_id}/status", tags=["Taller Textil (MRP)"])
 def update_production_status(order_id: int, status_update: schemas.ProductionOrderStatusUpdate, db: Session = Depends(get_db)):
+    product_name = "Uniforme Escolar / Lote Textil"
     try:
         op = db.query(models.OrdenProduccion).filter(models.OrdenProduccion.id == order_id).first()
         if op:
             op.estado = "Terminado" if status_update.state == "terminado" else "EnProceso"
             db.commit()
-            return {"status": "ok", "order_id": order_id, "new_state": status_update.state}
+            if op.product_tmpl_id:
+                p = db.query(models.ProductTemplate).filter(models.ProductTemplate.id == op.product_tmpl_id).first()
+                if p:
+                    product_name = p.name
     except Exception:
         db.rollback()
+
+    # Disparar alerta en Slack ante avance en las estaciones del taller
+    stage_labels = {
+        "corte": "1. Corte de Tela",
+        "confeccion": "2. Confección & Costura",
+        "bordado": "3. Bordado Computarizado (Tajima)",
+        "control_calidad": "4. Control de Calidad",
+        "terminado": "5. Listo para Entrega"
+    }
+    stage_text = stage_labels.get(status_update.state, status_update.state.capitalize())
+    slack_service.notify_slack_production_stage(
+        order_name=f"OP-2026-{order_id:03d}",
+        product_name=product_name,
+        stage_name=stage_text
+    )
+
     return {"status": "ok", "order_id": order_id, "new_state": status_update.state}
 
 
@@ -547,3 +614,58 @@ def get_dashboard_kpis(db: Session = Depends(get_db)):
             "total_partners": 3,
             "total_products_stock": 250
         }
+
+
+# ==============================================================================
+# 7. INTEGRACIÓN OFICIAL SLACK WEBHOOK (PASO 3.2 GUÍA METODOLÓGICA)
+# ==============================================================================
+@app.get("/api/v1/slack/status", tags=["Integración Slack"])
+def get_slack_status():
+    """
+    Retorna el estado de conexión del Webhook de Slack y eventos monitoreados.
+    """
+    configured = slack_service.is_slack_configured()
+    webhook = slack_service.get_slack_webhook()
+    masked = f"{webhook[:24]}...{webhook[-8:]}" if len(webhook) > 32 else (webhook if webhook else None)
+    return {
+        "configured": configured,
+        "webhook_url": masked,
+        "channel": "#notificaciones-maquiser",
+        "events": [
+            "🧥 Nuevo Producto Registrado en Catálogo (Paso 3.2 Guía Metodológica)",
+            "📋 Nuevo Pedido / Cotización de Confección",
+            "🏭 Avance de Lote en Tablero MRP (Corte, Costura, Bordado, Terminado)",
+            "🧵 Alerta de Stock de Rollos de Tela y Avíos"
+        ]
+    }
+
+@app.post("/api/v1/slack/webhook", tags=["Integración Slack"])
+def configure_slack_webhook(config: schemas.SlackWebhookConfig):
+    """
+    Guarda y valida la URL de Incoming Webhook de Slack en el servidor.
+    """
+    url = config.webhook_url.strip()
+    if not url.startswith("https://hooks.slack.com/"):
+        raise HTTPException(
+            status_code=400,
+            detail="La URL debe ser un Incoming Webhook válido de Slack (iniciar con https://hooks.slack.com/...)"
+        )
+    slack_service.set_slack_webhook(url)
+    return {
+        "status": "success",
+        "message": "Webhook de Slack configurado correctamente y guardado en variables de entorno.",
+        "configured": True
+    }
+
+@app.post("/api/v1/slack/test", tags=["Integración Slack"])
+def test_slack_webhook():
+    """
+    Dispara un mensaje de prueba al canal de Slack para verificar la integración.
+    """
+    success = slack_service.notify_slack_test_ping()
+    is_conf = slack_service.is_slack_configured()
+    return {
+        "success": success,
+        "configured": is_conf,
+        "message": "¡Mensaje de prueba enviado exitosamente a Slack!" if is_conf else "Mensaje registrado en consola (Webhook no configurado con URL externa)."
+    }

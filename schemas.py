@@ -184,3 +184,17 @@ class DashboardKPIs(BaseModel):
     low_stock_alerts: int
     total_partners: int
     total_products_stock: int
+
+
+# ==============================================================================
+# ESQUEMAS: INTEGRACIÓN CON SLACK (PASO 3.2 GUÍA METODOLÓGICA)
+# ==============================================================================
+class SlackWebhookConfig(BaseModel):
+    webhook_url: str
+
+class SlackStatusResponse(BaseModel):
+    configured: bool
+    webhook_url: Optional[str] = None
+    channel: Optional[str] = "#notificaciones-maquiser"
+    events: List[str] = []
+
