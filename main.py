@@ -74,9 +74,12 @@ def list_products(db: Session = Depends(get_db)):
 
     # Datos oficiales de respaldo del script DDL
     return [
-        {"id": 1, "name": "Uniforme Escolar Completo Varón", "price": 180.0, "stock": 85, "tipo_tela": "mezcla", "tipo_producto_textil": "uniforme", "image_url": "https://images.unsplash.com/photo-1596755094514-f87e34085b2c"},
-        {"id": 2, "name": "Camisa Escolar Blanca Manga Corta", "price": 65.0, "stock": 120, "tipo_tela": "algodon", "tipo_producto_textil": "uniforme", "image_url": "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf"},
-        {"id": 3, "name": "Overol Industrial de Trabajo Ignífugo", "price": 250.0, "stock": 45, "tipo_tela": "gabardina", "tipo_producto_textil": "uniforme", "image_url": "https://images.unsplash.com/photo-1581655353564-df123a1eb820"}
+        {"id": 1, "name": "Chaqueta Escolar Sastre Institucional", "price": 180.0, "stock": 85, "tipo_tela": "mezcla", "tipo_producto_textil": "uniforme", "image_url": "https://images.unsplash.com/photo-1596755094514-f87e34085b2c"},
+        {"id": 2, "name": "Falda Escolar a Tablas (Dama)", "price": 110.0, "stock": 90, "tipo_tela": "gabardina", "tipo_producto_textil": "uniforme", "image_url": "https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa"},
+        {"id": 3, "name": "Pantalón de Vestir Sastre con Raya de Planchado", "price": 135.0, "stock": 110, "tipo_tela": "mezcla", "tipo_producto_textil": "uniforme", "image_url": "https://images.unsplash.com/photo-1473966968600-fa801b869a1a"},
+        {"id": 4, "name": "Canguro Deportivo Urbano Térmico", "price": 145.0, "stock": 75, "tipo_tela": "algodon", "tipo_producto_textil": "deportivo", "image_url": "https://images.unsplash.com/photo-1556905055-8f358a7a47b2"},
+        {"id": 5, "name": "Camisa Oxford Blanca Institucional", "price": 65.0, "stock": 120, "tipo_tela": "algodon", "tipo_producto_textil": "uniforme", "image_url": "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf"},
+        {"id": 6, "name": "Overol Industrial de Trabajo Ignífugo", "price": 250.0, "stock": 45, "tipo_tela": "gabardina", "tipo_producto_textil": "industrial", "image_url": "https://images.unsplash.com/photo-1581655353564-df123a1eb820"}
     ]
 
 @app.post("/api/v1/products", status_code=status.HTTP_201_CREATED, tags=["Catálogo Textil"])
