@@ -137,6 +137,9 @@ class StockItemBase(BaseModel):
 class StockItemCreate(StockItemBase):
     pass
 
+class StockAddRequest(BaseModel):
+    quantity: float
+
 class StockItemResponse(StockItemBase):
     id: int
     created_at: Optional[datetime] = None

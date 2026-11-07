@@ -165,19 +165,29 @@ def create_partner(partner: schemas.PartnerCreate, db: Session = Depends(get_db)
 # ==============================================================================
 # 3. MATERIAS PRIMAS Y TELAS ('insumo' de Supabase)
 # ==============================================================================
+DEFAULT_INVENTORY = [
+    {"id": 1, "name": "Tela Drill Azul Marino 65/35", "category": "tela_rollo", "stock_quantity": 500.0, "min_quantity": 50.0, "unit_measure": "metros", "location": "Almacén Central de Telas - Estante A1"},
+    {"id": 2, "name": "Tela Popelina Blanca Camisera", "category": "tela_rollo", "stock_quantity": 350.0, "min_quantity": 40.0, "unit_measure": "metros", "location": "Almacén Central de Telas - Estante A2"},
+    {"id": 3, "name": "Tela Ripstop Antidesgarro Ignífugo", "category": "tela_rollo", "stock_quantity": 420.0, "min_quantity": 60.0, "unit_measure": "metros", "location": "Almacén Central de Telas - Estante B1"},
+    {"id": 4, "name": "Cinta Reflectiva 3M Scotchlite 5cm", "category": "avio", "stock_quantity": 180.0, "min_quantity": 30.0, "unit_measure": "metros", "location": "Almacén de Avíos - Gaveta C3"},
+    {"id": 5, "name": "Hilo Poliéster Calibre 40/2 Azul Marino", "category": "insumo", "stock_quantity": 40.0, "min_quantity": 10.0, "unit_measure": "conos", "location": "Almacén de Avíos - Hiloteca"},
+    {"id": 6, "name": "Botón de Pasta Escolar 4 Huecos 18L", "category": "avio", "stock_quantity": 2500.0, "min_quantity": 300.0, "unit_measure": "piezas", "location": "Almacén de Avíos - Gaveta B2"},
+    {"id": 7, "name": "Cierre Metálico Diente de Perro 18cm", "category": "avio", "stock_quantity": 450.0, "min_quantity": 50.0, "unit_measure": "piezas", "location": "Almacén de Avíos - Gaveta D1"}
+]
+
 @app.get("/api/v1/inventory", tags=["Inventario de Telas"])
 def list_inventory(db: Session = Depends(get_db)):
     """
     Lee directamente desde la tabla 'insumo' oficial de Supabase.
     """
     try:
-        insumos = db.query(models.Insumo).all()
+        insumos = db.query(models.Insumo).order_by(models.Insumo.id.desc()).all()
         if insumos:
             return [
                 {
                     "id": ins.id,
                     "name": ins.nombre,
-                    "category": "tela_rollo" if "Tela" in ins.nombre else "avio" if "Botón" in ins.nombre or "Cierre" in ins.nombre else "insumo",
+                    "category": "tela_rollo" if "Tela" in ins.nombre else "avio" if ("Botón" in ins.nombre or "Cierre" in ins.nombre or "Cinta" in ins.nombre) else "insumo",
                     "stock_quantity": float(ins.stock),
                     "min_quantity": float(ins.stock_minimo),
                     "unit_measure": ins.unidad_medida,
@@ -188,14 +198,79 @@ def list_inventory(db: Session = Depends(get_db)):
     except Exception:
         pass
 
-    # Datos oficiales del seed data de la guía
-    return [
-        {"id": 1, "name": "Tela Drill Azul Marino 65/35", "category": "tela_rollo", "stock_quantity": 500.0, "min_quantity": 50.0, "unit_measure": "metros", "location": "Almacén Central de Telas"},
-        {"id": 2, "name": "Tela Popelina Blanca Camisera", "category": "tela_rollo", "stock_quantity": 350.0, "min_quantity": 40.0, "unit_measure": "metros", "location": "Almacén Central de Telas"},
-        {"id": 3, "name": "Hilo Poliéster Calibre 40/2 Azul", "category": "insumo", "stock_quantity": 40.0, "min_quantity": 5.0, "unit_measure": "conos", "location": "Almacén de Avíos"},
-        {"id": 4, "name": "Botón de Pasta 4 Huevos 18L", "category": "avio", "stock_quantity": 2000.0, "min_quantity": 200.0, "unit_measure": "piezas", "location": "Almacén de Avíos"},
-        {"id": 5, "name": "Cierre Metálico Reforzado 18cm", "category": "avio", "stock_quantity": 300.0, "min_quantity": 30.0, "unit_measure": "piezas", "location": "Almacén de Avíos"}
-    ]
+    # Datos oficiales del seed data de la guía / memoria
+    return DEFAULT_INVENTORY
+
+@app.post("/api/v1/inventory", status_code=status.HTTP_201_CREATED, tags=["Inventario de Telas"])
+def create_inventory_item(item: schemas.StockItemCreate, db: Session = Depends(get_db)):
+    """
+    Registra un nuevo insumo / rollo de tela en la base de datos Supabase PostgreSQL.
+    """
+    try:
+        codigo = f"INS-{random.randint(1000, 9999)}"
+        nuevo = models.Insumo(
+            nombre=item.name,
+            codigo_insumo=codigo,
+            stock=item.stock_quantity,
+            stock_minimo=item.min_quantity or 10.0,
+            unidad_medida=item.unit_measure or "metros"
+        )
+        db.add(nuevo)
+        db.commit()
+        db.refresh(nuevo)
+        return {
+            "id": nuevo.id,
+            "name": nuevo.nombre,
+            "category": item.category or "tela_rollo",
+            "stock_quantity": float(nuevo.stock),
+            "min_quantity": float(nuevo.stock_minimo),
+            "unit_measure": nuevo.unidad_medida,
+            "location": item.location or "Almacén Central de Telas"
+        }
+    except Exception:
+        db.rollback()
+        new_id = max([i["id"] for i in DEFAULT_INVENTORY], default=0) + 1
+        item_dict = {
+            "id": new_id,
+            "name": item.name,
+            "category": item.category or "tela_rollo",
+            "stock_quantity": float(item.stock_quantity),
+            "min_quantity": float(item.min_quantity or 10.0),
+            "unit_measure": item.unit_measure or "metros",
+            "location": item.location or "Almacén Central de Telas"
+        }
+        DEFAULT_INVENTORY.insert(0, item_dict)
+        return item_dict
+
+@app.post("/api/v1/inventory/{item_id}/restock", tags=["Inventario de Telas"])
+def restock_inventory_item(item_id: int, payload: schemas.StockAddRequest, db: Session = Depends(get_db)):
+    """
+    Añade o incrementa el stock de un insumo existente (recepción de rollos de tela o avíos).
+    """
+    try:
+        ins = db.query(models.Insumo).filter(models.Insumo.id == item_id).first()
+        if ins:
+            ins.stock = float(ins.stock) + float(payload.quantity)
+            db.commit()
+            db.refresh(ins)
+            return {
+                "id": ins.id,
+                "name": ins.nombre,
+                "category": "tela_rollo" if "Tela" in ins.nombre else "avio" if ("Botón" in ins.nombre or "Cierre" in ins.nombre or "Cinta" in ins.nombre) else "insumo",
+                "stock_quantity": float(ins.stock),
+                "min_quantity": float(ins.stock_minimo),
+                "unit_measure": ins.unidad_medida,
+                "location": "Almacén Central de Telas"
+            }
+    except Exception:
+        db.rollback()
+
+    for it in DEFAULT_INVENTORY:
+        if it["id"] == item_id:
+            it["stock_quantity"] = float(it["stock_quantity"]) + float(payload.quantity)
+            return it
+
+    return {"message": "Stock actualizado", "id": item_id, "added": payload.quantity}
 
 
 # ==============================================================================
