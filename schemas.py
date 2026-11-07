@@ -148,6 +148,34 @@ class StockItemResponse(StockItemBase):
 
 
 # ==============================================================================
+# ESQUEMAS: AUTENTICACIÓN Y ROLES (RBAC)
+# ==============================================================================
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class UserProfile(BaseModel):
+    id: int
+    username: str
+    name: str
+    email: str
+    role: str
+    role_name: str
+    title: str
+    avatar_color: str
+    allowed_tabs: List[str]
+    can_edit_production: bool
+    can_edit_inventory: bool
+    can_manage_sales: Optional[bool] = False
+    can_manage_users: Optional[bool] = False
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserProfile
+
+
+# ==============================================================================
 # ESQUEMA: MÉTRICAS DEL DASHBOARD EJECUTIVO (KPIS)
 # ==============================================================================
 class DashboardKPIs(BaseModel):

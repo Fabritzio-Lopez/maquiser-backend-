@@ -34,6 +34,127 @@ def root():
     }
 
 # ==============================================================================
+# 0. AUTENTICACIÓN Y ROLES OFICIALES (RBAC 2.0)
+# ==============================================================================
+USERS_DATABASE = {
+    "fabritzio": {
+        "id": 1,
+        "username": "fabritzio",
+        "name": "Fabritzio López",
+        "email": "fabritzio@maquiser.bo",
+        "password": "Admin2026!",
+        "role": "super_admin",
+        "role_name": "Administrador General",
+        "title": "Director de Operaciones & Tecnología",
+        "avatar_color": "bg-blue-600 text-white",
+        "allowed_tabs": ["dashboard", "sales", "production", "catalog", "customizer", "inventory", "partners"],
+        "can_edit_production": True,
+        "can_edit_inventory": True,
+        "can_manage_sales": True,
+        "can_manage_users": True,
+    },
+    "milton": {
+        "id": 2,
+        "username": "milton",
+        "name": "Milton López",
+        "email": "milton.gerencia@maquiser.bo",
+        "password": "Milton2026!",
+        "role": "owner_admin",
+        "role_name": "Dueño & Gerente General",
+        "title": "Propietario / Gerencia General",
+        "avatar_color": "bg-purple-600 text-white",
+        "allowed_tabs": ["dashboard", "sales", "production", "catalog", "customizer", "inventory", "partners"],
+        "can_edit_production": True,
+        "can_edit_inventory": True,
+        "can_manage_sales": True,
+        "can_manage_users": True,
+    },
+    "jefe.planta": {
+        "id": 3,
+        "username": "jefe.planta",
+        "name": "Carlos Mendoza (Jefe de Planta)",
+        "email": "produccion@maquiser.bo",
+        "password": "Planta2026!",
+        "role": "plant_manager",
+        "role_name": "Jefe de Planta",
+        "title": "Jefe de Producción & Confección",
+        "avatar_color": "bg-amber-600 text-white",
+        "allowed_tabs": ["dashboard", "production", "inventory"],
+        "can_edit_production": True,
+        "can_edit_inventory": True,
+        "can_manage_sales": False,
+        "can_manage_users": False,
+    },
+    "almacen": {
+        "id": 4,
+        "username": "almacen",
+        "name": "Roberto Ramos (Encargado Almacenes)",
+        "email": "almacenes@maquiser.bo",
+        "password": "Almacen2026!",
+        "role": "warehouse_manager",
+        "role_name": "Encargado de Almacenes",
+        "title": "Jefe de Almacén & Materias Primas",
+        "avatar_color": "bg-emerald-600 text-white",
+        "allowed_tabs": ["production", "inventory"],
+        "can_edit_production": False,  # Solo lectura en producción para coordinar telas
+        "can_edit_inventory": True,   # Modificar y registrar en inventario
+        "can_manage_sales": False,
+        "can_manage_users": False,
+    },
+    "operario": {
+        "id": 5,
+        "username": "operario",
+        "name": "Juan Choque (Personal de Planta)",
+        "email": "planta.taller@maquiser.bo",
+        "password": "Taller2026!",
+        "role": "plant_operator",
+        "role_name": "Personal de Planta",
+        "title": "Operario Textil de Confección & Bordado",
+        "avatar_color": "bg-slate-700 text-white",
+        "allowed_tabs": ["production"],  # Solo puede ver Taller MRP
+        "can_edit_production": False,  # Solo ver su trabajo
+        "can_edit_inventory": False,
+        "can_manage_sales": False,
+        "can_manage_users": False,
+    }
+}
+
+@app.post("/api/v1/auth/login", response_model=schemas.LoginResponse, tags=["Autenticación"])
+def login(creds: schemas.LoginRequest):
+    """
+    Inicio de sesión por usuario o correo electrónico.
+    """
+    user = USERS_DATABASE.get(creds.username.strip().lower())
+    if not user:
+        for u in USERS_DATABASE.values():
+            if u["email"].lower() == creds.username.strip().lower():
+                user = u
+                break
+
+    if not user or user["password"] != creds.password:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales incorrectas. Verifique su usuario o contraseña."
+        )
+
+    user_data = {k: v for k, v in user.items() if k != "password"}
+    return {
+        "access_token": f"token-{user['username']}-2026-auth",
+        "token_type": "bearer",
+        "user": user_data
+    }
+
+@app.get("/api/v1/auth/users", tags=["Autenticación"])
+def get_demo_users():
+    """
+    Retorna la lista de los 5 usuarios y sus permisos para acceso rápido en la UI.
+    """
+    return [
+        {k: v for k, v in u.items() if k != "password"}
+        for u in USERS_DATABASE.values()
+    ]
+
+# ==============================================================================
 # 1. PRODUCTOS TEXTILES ('product_template' de Supabase)
 # ==============================================================================
 @app.get("/api/v1/products", tags=["Catálogo Textil"])
